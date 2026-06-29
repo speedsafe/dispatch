@@ -1,12 +1,14 @@
 # SpeedSafe Dispatch PWA
 
-Complete GPS tracking and push notification system for field technicians.
+Personal job dispatch app that pulls your daily schedule from Google Calendar and shows route timing between jobs.
 
 ## Features
 
-- **Worker Dispatch**: Real-time appointment scheduling with GPS tracking
-- **Admin Team View**: Live worker locations and status monitoring
-- **Push Notifications**: 15-minute leaving reminders before each appointment
+- **Google Calendar Integration**: Real-time sync of your daily jobs
+- **GPS Tracking**: Track your current location throughout the day
+- **Route Timing**: See how long until your next job and when to leave
+- **Automatic Location Extraction**: Pulls addresses from calendar events
+- **Push Notifications**: 15-minute leaving reminders before each job
 - **Route Optimization**: Mapbox integration for optimal routing
 - **Offline Support**: Service Worker caching for offline functionality
 - **Progressive Web App**: Install on home screen (iOS/Android)
@@ -15,9 +17,8 @@ Complete GPS tracking and push notification system for field technicians.
 ## Tech Stack
 
 - **Frontend**: React 18 (CDN), PWA, Service Worker
-- **Backend**: Node.js/Express, Socket.io
-- **Database**: Supabase (PostgreSQL)
-- **APIs**: Square Bookings, Mapbox Directions/Matrix, Web Push
+- **Backend**: Node.js/Express
+- **APIs**: Google Calendar API, Mapbox Directions/Matrix, Web Push
 
 ## Quick Start
 
@@ -27,45 +28,28 @@ Complete GPS tracking and push notification system for field technicians.
 npm install
 ```
 
-### 2. Configure Environment
+### 2. Configure Google Calendar
 
-Create `.env.local` with:
+Follow the [Google Calendar Setup Guide](./SETUP_GOOGLE_CALENDAR.md) to:
+1. Create a Google Cloud project
+2. Enable Calendar API
+3. Get OAuth 2.0 credentials
+
+### 3. Create `.env` file
+
 ```
-SQUARE_ACCESS_TOKEN=your_token
-SQUARE_LOCATION_ID=your_location
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_key
-SUPABASE_SECRET_KEY=your_secret
-MAPBOX_TOKEN=your_token
-VAPID_PUBLIC_KEY=your_public
-VAPID_PRIVATE_KEY=your_private
+GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:5000/auth/google/callback
+
+MAPBOX_TOKEN=your_mapbox_token
+
 PORT=5000
-NODE_ENV=production
-CLIENT_URL=https://dispatch.speedsafe.au
+NODE_ENV=development
+CLIENT_URL=http://localhost:5000
 ```
 
-### 3. Setup Database
-
-Go to Supabase SQL Editor and run:
-```sql
-CREATE TABLE worker_locations (
-  id BIGSERIAL PRIMARY KEY,
-  worker_id TEXT NOT NULL,
-  lat FLOAT NOT NULL,
-  lng FLOAT NOT NULL,
-  accuracy FLOAT,
-  timestamp TIMESTAMP NOT NULL DEFAULT NOW()
-);
-CREATE INDEX idx_worker_id ON worker_locations(worker_id);
-
-CREATE TABLE push_subscriptions (
-  id BIGSERIAL PRIMARY KEY,
-  worker_id TEXT NOT NULL,
-  subscription JSONB NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-CREATE UNIQUE INDEX idx_worker_subscription ON push_subscriptions(worker_id);
-```
+**Note**: Google Client ID/Secret are required. Mapbox is optional but recommended for ETA calculations.
 
 ### 4. Run Locally
 
@@ -75,32 +59,54 @@ npm start
 
 Visit `http://localhost:5000`
 
+Click "📅 Connect Google Calendar" and sign in with your Google account.
+
 ### 5. Deploy to Vercel
 
 ```bash
 git push origin main
 ```
 
-Vercel auto-deploys. Add env vars in Vercel dashboard.
+Vercel auto-deploys. Add these environment variables in Vercel dashboard:
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`  
+- `GOOGLE_REDIRECT_URI=https://your-vercel-domain.com/auth/google/callback`
+- `MAPBOX_TOKEN` (optional)
 
-## Demo Credentials
+## Demo Mode
 
-- **Worker**: worker@speedsafe.au / password
-- **Admin**: admin@speedsafe.au / password
+For testing without Google Calendar:
+- Email: `worker@speedsafe.au`
+- Password: `password`
+
+Shows hardcoded sample jobs.
 
 ## API Routes
 
+### Authentication
+- `GET /auth/google` - Start Google OAuth flow
+- `GET /auth/google/callback` - OAuth callback handler
+- `GET /auth/status` - Check authentication status
+
+### Jobs & Scheduling
 - `GET /api/health` - Health check
-- `GET /api/appointments` - List worker appointments
-- `POST /api/track-location` - Log GPS location
-- `GET /api/team-locations` - Get all worker locations
-- `POST /api/subscribe-notification` - Register push subscription
-- `POST /api/send-notification` - Send push to worker
-- `POST /api/optimize-route` - Get optimized route
+- `GET /api/appointments` - Get today's calendar events
+- `POST /api/location` - Log current GPS location
+- `POST /api/track-location` - Alternate location endpoint
+
+## How It Works
+
+1. **Connect your Google Calendar** - OAuth login pulls your account
+2. **Calendar syncs** - App fetches today's events automatically
+3. **Locations extracted** - Addresses pulled from event Location field
+4. **Route timing calculated** - Time to next job based on current location
+5. **GPS tracking** - Your location updated every 5 seconds
+6. **Reminders sent** - Push notification 15 min before leaving for next job
 
 ## Performance
 
 - **First Load**: < 2s
+- **Calendar Sync**: < 1s
 - **GPS Update Frequency**: Every 5 seconds
 - **Push Notification Latency**: < 1s
 - **Offline**: Full app shell cached
@@ -111,10 +117,19 @@ Vercel auto-deploys. Add env vars in Vercel dashboard.
 - Android 7+
 - PWA installable on home screen
 
-## Support
+## Troubleshooting
 
-Email: hello@speedsafe.au
+**Calendar events not showing?**
+- Make sure events have a Location field or address in description
+- Events must be today's date
+- Verify Google Calendar permissions granted
+
+**ETA not calculating?**
+- Add Mapbox token to environment variables
+- Ensure events have complete addresses
+
+See [SETUP_GOOGLE_CALENDAR.md](./SETUP_GOOGLE_CALENDAR.md) for full setup instructions.
 
 ## License
 
-Proprietary - SpeedSafe Pty Ltd
+Proprietary

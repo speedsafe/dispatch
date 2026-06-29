@@ -6,6 +6,8 @@ import webpush from 'web-push';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { google } from 'googleapis';
+import session from 'express-session';
 
 dotenv.config();
 
@@ -18,6 +20,21 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
+app.use(session({
+  secret: 'dispatch-secret-key',
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false, httpOnly: true }
+}));
+
+// Google Calendar OAuth
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.GOOGLE_REDIRECT_URI || 'http://localhost:5000/auth/google/callback'
+);
+
+const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
 // Supabase client (optional for development)
 let supabase = null;
@@ -72,59 +89,112 @@ async function getETA(fromLat, fromLng, toLat, toLng) {
   }
 }
 
-// Mock users for demo
-const DEMO_USERS = {
-  'worker@speedsafe.au': { id: 'worker1', name: 'John Technician', role: 'worker' },
-  'admin@speedsafe.au': { id: 'admin1', name: 'Admin User', role: 'admin' }
-};
+// Google Calendar OAuth Routes
+app.get('/auth/google', (req, res) => {
+  const authUrl = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/userinfo.profile'
+    ]
+  });
+  res.json({ authUrl });
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+  const { code } = req.query;
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+    req.session.tokens = tokens;
+    res.redirect('/');
+  } catch (err) {
+    console.error('OAuth error:', err);
+    res.status(400).json({ error: 'Authentication failed' });
+  }
+});
+
+app.get('/auth/status', (req, res) => {
+  const authenticated = !!req.session.tokens;
+  res.json({ authenticated, tokens: authenticated ? { access_token: '***' } : null });
+});
 
 // API Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.post('/api/auth/login', (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password required' });
-    }
-
-    const user = DEMO_USERS[email];
-    if (!user || password !== 'password') {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    res.json({ user });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.get('/api/appointments', async (req, res) => {
   try {
-    const bookings = await getSquareAppointments();
+    if (!req.session.tokens) {
+      return res.status(401).json({ error: 'Not authenticated', appointments: [] });
+    }
 
-    const appointments = bookings.length > 0
-      ? bookings.map((b, idx) => ({
-          id: b.id || idx,
-          time: new Date(b.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          customer: b.customer_note || 'Customer',
-          address: b.location_id || 'TBD',
-          service: b.service_option_id || 'Service',
-          price: b.price || '0',
-          eta: '15 min',
-          leaveTime: new Date(Date.now() - 20 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }))
-      : [
-          { id: '1', time: '09:00 AM', customer: 'John Smith', address: '123 Main St', service: 'Installation', price: '$150', eta: '15 min', leaveTime: '08:45 AM' },
-          { id: '2', time: '11:30 AM', customer: 'Jane Doe', address: '456 Oak Ave', service: 'Repair', price: '$85', eta: '20 min', leaveTime: '11:10 AM' }
-        ];
+    oauth2Client.setCredentials(req.session.tokens);
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    const { data } = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin: startOfDay.toISOString(),
+      timeMax: endOfDay.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      fields: 'items(id,summary,description,start,end,location)'
+    });
+
+    const appointments = await Promise.all(
+      (data.items || []).map(async (event, idx) => {
+        const startTime = new Date(event.start.dateTime || event.start.date);
+        const endTime = new Date(event.end.dateTime || event.end.date);
+
+        // Extract location from event (assumes format: "Address" or from description)
+        let address = event.location || 'TBD';
+
+        // Try to extract address from description if location is empty
+        if (!event.location && event.description) {
+          const addressMatch = event.description.match(/(?:Address|Address:|at )([^\n]+)/i);
+          if (addressMatch) {
+            address = addressMatch[1].trim();
+          }
+        }
+
+        // Calculate ETA to next appointment if available
+        let eta = '--';
+        if (idx < (data.items || []).length - 1) {
+          const nextEvent = (data.items || [])[idx + 1];
+          const nextStartTime = new Date(nextEvent.start.dateTime || nextEvent.start.date);
+          const durationMin = Math.round((nextStartTime - endTime) / 60000);
+          if (durationMin > 0) {
+            eta = `${durationMin} min`;
+          }
+        }
+
+        const leaveTime = new Date(startTime.getTime() - 15 * 60000); // Leave 15 min before
+
+        return {
+          id: event.id,
+          time: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          customer: event.summary || 'Appointment',
+          address,
+          service: endTime.getTime() - startTime.getTime() > 0
+            ? `${Math.round((endTime - startTime) / 60000)} min`
+            : 'TBD',
+          price: 'TBD',
+          eta,
+          leaveTime: leaveTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          location: address // For route optimization
+        };
+      })
+    );
 
     res.json({ appointments });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Calendar error:', error.message);
+    res.status(500).json({ error: error.message, appointments: [] });
   }
 });
 
