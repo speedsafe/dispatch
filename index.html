@@ -1,27 +1,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0f0f0f">
-  <meta name="description" content="SpeedSafe Dispatch - GPS tracking and scheduling for field technicians">
-  <title>SpeedSafe Dispatch</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230f0f0f' width='192' height='192'/><circle cx='96' cy='96' r='80' fill='%231a8dff'/><text x='96' y='115' font-size='60' font-weight='bold' fill='white' text-anchor='middle'>SS</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230f0f0f' width='192' height='192'/><circle cx='96' cy='96' r='80' fill='%231a8dff'/><text x='96' y='115' font-size='60' font-weight='bold' fill='white' text-anchor='middle'>SS</text></svg>">
-  <link rel="stylesheet" href="speedsafe-dispatch.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0f0f0f">
+    <meta name="description" content="SpeedSafe Dispatch - GPS tracking and task management for installation technicians">
+    <title>SpeedSafe Dispatch</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231a8dff' width='100' height='100'/><text x='50' y='50' font-size='60' font-weight='bold' fill='white' text-anchor='middle' dy='.3em'>S</text></svg>">
+    <link rel="stylesheet" href="/speedsafe-dispatch.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; width: 100%; overflow-x: hidden; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: #0f0f0f; color: #e5e5e5; }
+        #root { height: 100%; }
+        .app-container { height: 100vh; display: flex; flex-direction: column; background: #0f0f0f; }
+        .loading { display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 18px; color: #1a8dff; }
+    </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mapbox-gl@2.15.0/dist/mapbox-gl.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/mapbox-gl@2.15.0/dist/mapbox-gl.css" rel="stylesheet">
-  <script src="speedsafe-dispatch-app.jsx"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW registration failed:', err));
-    }
-  </script>
+    <div id="root"></div>
+    
+    <!-- React & ReactDOM from CDN -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Main App Script -->
+    <script>
+        const { useState, useEffect, useRef } = React;
+
+        // LoginScreen Component
+        function LoginScreen({ onLogin }) {
+            const [email, setEmail] = useState('worker@speedsafe.au');
+            const [password, setPassword] = useState('password');
+            const [error, setError] = useState('');
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+                try {
+                    const response = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await response.json();
+                    if (data.user) {
+                        onLogin(data.user);
+                    } else {
+                        setError(data.message || 'Login failed');
+                    }
+                } catch (err) {
+                    setError('Connection error: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="login-container">
+                    <div className="login-card">
+                        <div className="login-header">
+                            <div className="login-logo">S</div>
+                            <h1>SpeedSafe Dispatch</h1>
+                        </div>
+                        <form onSubmit={handleSubmit}>
+                            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                            <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                            <button type="submit" disabled={loading}>{loading ? 'Logging in...' : 'Login'}</button>
+                            {error && <div className="error-message">{error}</div>}
+                            <div className="demo-hint">Demo: worker@speedsafe.au / password</div>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // WorkerDispatchScreen Component
+        function WorkerDispatchScreen({ user, onLogout }) {
+            const [appointments, setAppointments] = useState([]);
+            const [location, setLocation] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const mapRef = useRef(null);
+
+            useEffect(() => {
+                // Fetch appointments
+                fetch(`/api/appointments?worker_id=${user.id}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        setAppointments(data.appointments || []);
+                        setLoading(false);
+                    })
+                    .catch(err => {
+                        console.error('Fetch error:', err);
+                        setLoading(false);
+                    });
+
+                // Request location
+                if (navigator.geolocation) {
+                    navigator.geolocation.watchPosition(
+                        (pos) => {
+                            const newLoc = {
+                                lat: pos.coords.latitude,
+                                lng: pos.coords.longitude,
+                                accuracy: pos.coords.accuracy
+                            };
+                            setLocation(newLoc);
+                            // Send to backend
+                            fetch('/api/location', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ worker_id: user.id, ...newLoc })
+                            }).catch(err => console.error('Location update error:', err));
+                        },
+                        (err) => console.error('Geolocation error:', err),
+                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                    );
+                }
+
+                // Register Service Worker
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('/service-worker.js')
+                        .then(reg => console.log('SW registered:', reg.scope))
+                        .catch(err => console.error('SW registration failed:', err));
+                }
+
+                // Request notification permission
+                if ('Notification' in window && Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+            }, [user.id]);
+
+            return (
+                <div className="app-container">
+                    <div className="header">
+                        <div className="header-content">
+                            <h1>Dispatch</h1>
+                            <div className="user-info">
+                                <span>{user.name}</span>
+                                <button onClick={onLogout} className="logout-btn">Logout</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="main-content">
+                        <div className="appointments-section">
+                            <h2>Today's Appointments</h2>
+                            {loading ? (
+                                <div className="loading">Loading appointments...</div>
+                            ) : appointments.length === 0 ? (
+                                <div className="no-appointments">No appointments scheduled</div>
+                            ) : (
+                                <div className="appointments-list">
+                                    {appointments.map(apt => (
+                                        <div key={apt.id} className="appointment-card">
+                                            <div className="apt-time">{apt.time}</div>
+                                            <div className="apt-customer">{apt.customer}</div>
+                                            <div className="apt-address">{apt.address}</div>
+                                            <div className="apt-service">{apt.service}</div>
+                                            <div className="apt-price">${apt.price}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="location-section">
+                            <h3>Your Location</h3>
+                            {location ? (
+                                <div className="location-info">
+                                    <p>Latitude: {location.lat.toFixed(6)}</p>
+                                    <p>Longitude: {location.lng.toFixed(6)}</p>
+                                    <p>Accuracy: ±{Math.round(location.accuracy)}m</p>
+                                </div>
+                            ) : (
+                                <p>Requesting location...</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Main App Component
+        function App() {
+            const [user, setUser] = useState(null);
+
+            const handleLogin = (userData) => {
+                setUser(userData);
+                localStorage.setItem('user', JSON.stringify(userData));
+            };
+
+            const handleLogout = () => {
+                setUser(null);
+                localStorage.removeItem('user');
+            };
+
+            useEffect(() => {
+                const stored = localStorage.getItem('user');
+                if (stored) {
+                    try {
+                        setUser(JSON.parse(stored));
+                    } catch (e) {
+                        console.error('Failed to restore user:', e);
+                    }
+                }
+            }, []);
+
+            return user ? (
+                <WorkerDispatchScreen user={user} onLogout={handleLogout} />
+            ) : (
+                <LoginScreen onLogin={handleLogin} />
+            );
+        }
+
+        // Render App
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
