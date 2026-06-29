@@ -2,7 +2,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".",
   "framework": "other",
-  "nodejs": "18.x",
   "env": {
     "SQUARE_ACCESS_TOKEN": "@square_access_token",
     "SQUARE_LOCATION_ID": "@square_location_id",
@@ -12,11 +11,6 @@
     "MAPBOX_TOKEN": "@mapbox_token",
     "VAPID_PUBLIC_KEY": "@vapid_public_key",
     "VAPID_PRIVATE_KEY": "@vapid_private_key"
-  },
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 30
-    }
   },
   "routes": [
     {
