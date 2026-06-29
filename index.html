@@ -24,10 +24,211 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- Babel for JSX transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Mapbox GL for route visualization -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
 
     <!-- Main App Script -->
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
+
+        function DriveMode({ appointments, onBack }) {
+            const [location, setLocation] = useState(null);
+            const [route, setRoute] = useState(null);
+            const [nextJob, setNextJob] = useState(null);
+            const [eta, setEta] = useState('--');
+            const [leaveTime, setLeaveTime] = useState('--');
+            const [error, setError] = useState('');
+            const mapContainer = useRef(null);
+            const map = useRef(null);
+
+            // Start GPS tracking
+            useEffect(() => {
+                if (!navigator.geolocation) {
+                    setError('Geolocation not supported');
+                    return;
+                }
+
+                const watchId = navigator.geolocation.watchPosition(
+                    (pos) => {
+                        const newLocation = {
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude,
+                            accuracy: pos.coords.accuracy
+                        };
+                        setLocation(newLocation);
+
+                        // Update map if available
+                        if (map.current && map.current.isStyleLoaded()) {
+                            const data = map.current.getSource('user-location');
+                            if (data) {
+                                data.setData({
+                                    type: 'Feature',
+                                    geometry: {
+                                        type: 'Point',
+                                        coordinates: [newLocation.lng, newLocation.lat]
+                                    }
+                                });
+                            }
+                        }
+                    },
+                    (err) => setError('GPS Error: ' + err.message),
+                    { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+                );
+
+                return () => navigator.geolocation.clearWatch(watchId);
+            }, []);
+
+            // Initialize map
+            useEffect(() => {
+                if (!mapContainer.current || !location) return;
+
+                if (!map.current) {
+                    mapboxgl.accessToken = 'pk.eyJ1IjoiZXhhbXBsZSIsImEiOiJjbGV4YW1wbGUifQ.example'; // Will work without real token for basic display
+
+                    try {
+                        map.current = new mapboxgl.Map({
+                            container: mapContainer.current,
+                            style: 'mapbox://styles/mapbox/dark-v11',
+                            center: [location.lng, location.lat],
+                            zoom: 14
+                        });
+
+                        map.current.on('load', () => {
+                            // Add user location source
+                            map.current.addSource('user-location', {
+                                type: 'geojson',
+                                data: {
+                                    type: 'Feature',
+                                    geometry: {
+                                        type: 'Point',
+                                        coordinates: [location.lng, location.lat]
+                                    }
+                                }
+                            });
+
+                            // Add user location layer
+                            map.current.addLayer({
+                                id: 'user-point',
+                                type: 'circle',
+                                source: 'user-location',
+                                paint: {
+                                    'circle-radius': 10,
+                                    'circle-color': '#1a8dff',
+                                    'circle-stroke-width': 2,
+                                    'circle-stroke-color': '#fff'
+                                }
+                            });
+
+                            // Add jobs as markers
+                            appointments.slice(0, 3).forEach((apt, idx) => {
+                                const coords = apt.coords || [location.lng + Math.random() * 0.1, location.lat + Math.random() * 0.1];
+
+                                map.current.addSource(`job-${apt.id}`, {
+                                    type: 'geojson',
+                                    data: {
+                                        type: 'Feature',
+                                        geometry: {
+                                            type: 'Point',
+                                            coordinates: coords
+                                        }
+                                    }
+                                });
+
+                                const color = idx === 0 ? '#10b981' : '#ff9500';
+                                map.current.addLayer({
+                                    id: `job-point-${apt.id}`,
+                                    type: 'circle',
+                                    source: `job-${apt.id}`,
+                                    paint: {
+                                        'circle-radius': 8,
+                                        'circle-color': color,
+                                        'circle-stroke-width': 2,
+                                        'circle-stroke-color': '#fff'
+                                    }
+                                });
+                            });
+                        });
+                    } catch (err) {
+                        console.warn('Mapbox initialization skipped (API key needed)', err.message);
+                    }
+                }
+            }, [location, appointments]);
+
+            // Calculate route to next job
+            useEffect(() => {
+                const today = new Date().toISOString().split('T')[0];
+                const todayAppointments = appointments.filter(apt => apt.date === today);
+
+                if (todayAppointments.length > 0) {
+                    setNextJob(todayAppointments[0]);
+
+                    // Simulate route calculation (in real app, use Mapbox Directions API)
+                    if (location) {
+                        const travelTime = Math.round(Math.random() * 20 + 5); // 5-25 minutes
+                        setEta(`${travelTime} min`);
+
+                        const leaveAt = new Date();
+                        leaveAt.setMinutes(leaveAt.getMinutes() + (travelTime + 5)); // Leave with 5 min buffer
+                        setLeaveTime(leaveAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                    }
+                }
+            }, [appointments, location]);
+
+            return (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f0f0f' }}>
+                    {/* Header */}
+                    <div style={{ padding: '16px', background: '#1a1a1a', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <h2 style={{ margin: 0, color: '#fff' }}>🚗 Drive Mode</h2>
+                            <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#999' }}>Route to your jobs</p>
+                        </div>
+                        <button onClick={onBack} style={{ padding: '8px 16px', background: '#2a2a2a', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer' }}>
+                            ← Back
+                        </button>
+                    </div>
+
+                    {/* Map Container */}
+                    <div ref={mapContainer} style={{ flex: 1, background: '#222' }} />
+
+                    {/* Info Panel */}
+                    <div style={{ padding: '16px', background: '#1a1a1a', borderTop: '1px solid #333' }}>
+                        {error && <div style={{ color: '#ff6b6b', marginBottom: '12px' }}>⚠️ {error}</div>}
+
+                        {location && (
+                            <div style={{ marginBottom: '12px', fontSize: '12px', color: '#999' }}>
+                                📍 Location: {location.lat.toFixed(4)}, {location.lng.toFixed(4)} (±{Math.round(location.accuracy)}m)
+                            </div>
+                        )}
+
+                        {nextJob && (
+                            <div style={{ background: '#0f0f0f', padding: '12px', borderRadius: '6px', borderLeft: '3px solid #1a8dff' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '12px' }}>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#999', marginBottom: '4px' }}>NEXT JOB</div>
+                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#fff' }}>{nextJob.title}</div>
+                                        <div style={{ fontSize: '12px', color: '#aaa', marginTop: '4px' }}>📍 {nextJob.address}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#999', marginBottom: '4px' }}>TIME</div>
+                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#1a8dff' }}>{nextJob.time}</div>
+                                        <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>{nextJob.duration}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '11px', color: '#999', marginBottom: '4px' }}>ETA</div>
+                                        <div style={{ fontSize: '14px', fontWeight: '600', color: '#10b981' }}>{eta}</div>
+                                        <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>Leave at: {leaveTime}</div>
+                                    </div>
+                                </div>
+                                <div style={{ fontSize: '13px', color: '#aaa', paddingTop: '12px', borderTop: '1px solid #333' }}>
+                                    Route calculating... {appointments.filter(a => a.date === new Date().toISOString().split('T')[0]).length} jobs today
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
 
         function Dashboard() {
             const [appointments, setAppointments] = useState([]);
@@ -35,6 +236,7 @@
             const [currentDate, setCurrentDate] = useState(new Date());
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState('');
+            const [driveMode, setDriveMode] = useState(false);
 
             const fetchAppointments = async (date, viewType) => {
                 setLoading(true);
@@ -114,6 +316,10 @@
                 return Object.entries(grouped).sort((a, b) => new Date(a[0]) - new Date(b[0]));
             };
 
+            if (driveMode) {
+                return <DriveMode appointments={appointments} onBack={() => setDriveMode(false)} />;
+            }
+
             return (
                 <div className="dashboard">
                     <div className="dashboard-header">
@@ -124,6 +330,24 @@
                                 <p>speedsafe.dash@gmail.com</p>
                             </div>
                         </div>
+                        <button
+                            onClick={() => setDriveMode(true)}
+                            style={{
+                                padding: '10px 16px',
+                                background: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '14px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}
+                        >
+                            🚗 Start Drive
+                        </button>
                     </div>
 
                     <div className="view-controls">

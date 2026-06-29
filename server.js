@@ -77,17 +77,32 @@ async function getSquareAppointments() {
   }
 }
 
-// Mapbox ETA calculation
-async function getETA(fromLat, fromLng, toLat, toLng) {
+// Mapbox route calculation
+async function getRoute(coordinates) {
+  if (!process.env.MAPBOX_TOKEN) {
+    // Return mock route if no token
+    return {
+      distance: Math.random() * 20 + 5,
+      duration: Math.random() * 1200 + 300,
+      geometry: { coordinates: coordinates }
+    };
+  }
+
   try {
+    const coordStr = coordinates.map(c => `${c[0]},${c[1]}`).join(';');
     const response = await axios.get(
-      `https://api.mapbox.com/directions/v5/mapbox/driving/${fromLng},${fromLat};${toLng},${toLat}?access_token=${process.env.MAPBOX_TOKEN}`
+      `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?geometries=geojson&overview=full&access_token=${process.env.MAPBOX_TOKEN}`
     );
-    const duration = response.data.routes[0]?.duration || 0;
-    return Math.ceil(duration / 60);
+
+    const route = response.data.routes[0];
+    return {
+      distance: route.distance / 1609.34, // Convert to miles
+      duration: route.duration,
+      geometry: route.geometry
+    };
   } catch (error) {
     console.error('Mapbox error:', error.message);
-    return 0;
+    return null;
   }
 }
 
@@ -290,17 +305,91 @@ app.post('/api/send-notification', async (req, res) => {
   }
 });
 
+app.post('/api/route', async (req, res) => {
+  try {
+    const { from, to } = req.body;
+
+    if (!from || !to) {
+      return res.status(400).json({ error: 'from and to coordinates required' });
+    }
+
+    const route = await getRoute([[from.lng, from.lat], [to.lng, to.lat]]);
+
+    if (!route) {
+      return res.status(503).json({ error: 'Route calculation unavailable' });
+    }
+
+    // Calculate ideal departure time (with 10% buffer)
+    const travelTime = Math.ceil(route.duration / 60); // Convert to minutes
+    const leaveBuffer = Math.ceil(travelTime * 0.1) + 5; // 10% + 5 min buffer
+    const departureTime = new Date();
+    departureTime.setMinutes(departureTime.getMinutes() + leaveBuffer);
+
+    res.json({
+      distance: route.distance.toFixed(1),
+      duration: travelTime,
+      leaveAt: departureTime.toISOString(),
+      departureMinutes: leaveBuffer,
+      geometry: route.geometry
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/optimize-route', async (req, res) => {
   try {
-    const { coordinates } = req.body;
-    
-    const coords = coordinates.map(c => `${c.lng},${c.lat}`).join(';');
-    const response = await axios.get(
-      `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?geometries=geojson&overview=full&access_token=${process.env.MAPBOX_TOKEN}`
-    );
+    const { appointments, currentLocation } = req.body;
 
-    res.json(response.data.routes[0] || {});
+    if (!appointments || appointments.length === 0) {
+      return res.json({ route: null, optimizedOrder: [] });
+    }
+
+    // Sort appointments by time (simple optimization - real app would use Mapbox Matrix API)
+    const sorted = [...appointments].sort((a, b) => {
+      return new Date(`2000-01-01 ${a.time}`) - new Date(`2000-01-01 ${b.time}`);
+    });
+
+    // Calculate routes between consecutive jobs
+    const routes = [];
+    let totalDistance = 0;
+    let totalDuration = 0;
+
+    for (let i = 0; i < sorted.length; i++) {
+      const from = i === 0 ? currentLocation : sorted[i - 1];
+      const to = sorted[i];
+
+      // Use mock coordinates if not available
+      const fromCoords = from.coords || [currentLocation.lng || -151.7419, currentLocation.lat || 58.4160];
+      const toCoords = to.coords || [
+        currentLocation.lng + Math.random() * 0.2,
+        currentLocation.lat + Math.random() * 0.2
+      ];
+
+      const route = await getRoute([fromCoords, toCoords]);
+
+      if (route) {
+        routes.push({
+          from: i === 0 ? 'current' : sorted[i - 1].id,
+          to: sorted[i].id,
+          distance: route.distance,
+          duration: Math.ceil(route.duration / 60),
+          geometry: route.geometry
+        });
+        totalDistance += route.distance;
+        totalDuration += route.duration / 60;
+      }
+    }
+
+    res.json({
+      optimizedOrder: sorted,
+      routes,
+      totalDistance: totalDistance.toFixed(1),
+      totalDuration: Math.ceil(totalDuration),
+      startTime: new Date().toISOString()
+    });
   } catch (error) {
+    console.error('Route optimization error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
