@@ -1,6 +1,34 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".",
+  "headers": [
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/service-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
@@ -8,11 +36,11 @@
     },
     {
       "src": "/service-worker.js",
-      "dest": "service-worker.js"
+      "dest": "/service-worker.js"
     },
     {
       "src": "/manifest.json",
-      "dest": "manifest.json"
+      "dest": "/manifest.json"
     },
     {
       "src": "/(.*\\.(js|css|json|png|jpg|gif|svg|woff|woff2))",

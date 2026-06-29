@@ -23,13 +23,24 @@ const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
 axios.defaults.httpAgent = httpAgent;
 axios.defaults.httpsAgent = httpsAgent;
 
+// Security and CORS headers
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  next();
+});
+
 app.use(cors());
 app.use(express.json());
 
-// Serve manifest with proper headers
+// Serve manifest with proper headers (catch before static)
 app.get('/manifest.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/manifest+json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.type('application/manifest+json');
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Cache-Control', 'public, max-age=3600');
   res.sendFile(`${__dirname}/manifest.json`);
 });
 
