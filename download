@@ -1,0 +1,11 @@
+# .gitignore for SpeedSafe Dispatch
+.env.local
+.env.*.local
+node_modules/
+.DS_Store
+*.log
+npm-debug.log*
+dist/
+.vercel
+.next
+*.pid
