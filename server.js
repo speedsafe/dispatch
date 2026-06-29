@@ -61,55 +61,72 @@ if (CALENDAR_ICS_URL) {
 // Fetch and parse ICS feed
 async function fetchCalendarEvents(dateMin, dateMax) {
   if (!CALENDAR_ICS_URL) {
+    console.warn('No CALENDAR_ICS_URL configured');
     return [];
   }
 
   try {
+    console.log('Fetching ICS feed from:', CALENDAR_ICS_URL.substring(0, 50) + '...');
     const response = await axios.get(CALENDAR_ICS_URL, {
       timeout: 10000,
       httpAgent,
       httpsAgent
     });
+
+    console.log(`ICS feed response size: ${response.data.length} bytes`);
+
+    if (!response.data || response.data.length === 0) {
+      console.warn('Empty ICS feed response');
+      return [];
+    }
+
     const jcal = ICAL.parse(response.data);
     const comp = new ICAL.Component(jcal);
     const events = comp.getAllSubcomponents('vevent');
+    console.log(`Parsed ${events.length} events from ICS feed`);
 
     const appointments = events
       .map(event => {
-        const summary = event.getFirstPropertyValue('summary') || 'Event';
-        const description = event.getFirstPropertyValue('description') || '';
-        const location = event.getFirstPropertyValue('location') || '';
-        const startProp = event.getFirstPropertyValue('dtstart');
-        const endProp = event.getFirstPropertyValue('dtend');
+        try {
+          const summary = event.getFirstPropertyValue('summary') || 'Event';
+          const description = event.getFirstPropertyValue('description') || '';
+          const location = event.getFirstPropertyValue('location') || '';
+          const startProp = event.getFirstPropertyValue('dtstart');
+          const endProp = event.getFirstPropertyValue('dtend');
 
-        if (!startProp || !endProp) return null;
+          if (!startProp || !endProp) return null;
 
-        const startTime = startProp.toJSDate();
-        const endTime = endProp.toJSDate();
+          const startTime = startProp.toJSDate();
+          const endTime = endProp.toJSDate();
 
-        // Filter by date range
-        if (startTime > dateMax || endTime < dateMin) {
+          // Filter by date range
+          if (startTime > dateMax || endTime < dateMin) {
+            return null;
+          }
+
+          const duration = Math.round((endTime - startTime) / 60000);
+
+          return {
+            id: event.getFirstPropertyValue('uid') || Math.random().toString(),
+            date: startTime.toISOString().split('T')[0],
+            time: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            title: summary,
+            address: location || 'TBD',
+            duration: duration > 0 ? `${duration} min` : 'All day',
+            eta: '--'
+          };
+        } catch (eventError) {
+          console.warn('Error parsing individual event:', eventError.message);
           return null;
         }
-
-        const duration = Math.round((endTime - startTime) / 60000);
-
-        return {
-          id: event.getFirstPropertyValue('uid') || Math.random().toString(),
-          date: startTime.toISOString().split('T')[0],
-          time: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          title: summary,
-          address: location || 'TBD',
-          duration: duration > 0 ? `${duration} min` : 'All day',
-          eta: '--'
-        };
       })
       .filter(Boolean);
 
     return appointments;
   } catch (error) {
     console.error('ICS feed error:', error.message);
+    console.error('Error stack:', error.stack);
     return [];
   }
 }
@@ -195,6 +212,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/appointments', async (req, res) => {
   try {
     if (!CALENDAR_ICS_URL) {
+      console.warn('Calendar ICS feed not configured');
       return res.status(503).json({ error: 'Calendar ICS feed not configured', appointments: [] });
     }
 
@@ -220,7 +238,10 @@ app.get('/api/appointments', async (req, res) => {
       timeMax.setDate(date.getDate() + 1);
     }
 
+    console.log(`Fetching appointments for ${view} view: ${timeMin.toISOString()} to ${timeMax.toISOString()}`);
+
     const appointments = await fetchCalendarEvents(timeMin, timeMax);
+    console.log(`Found ${appointments.length} appointments`);
 
     // Calculate ETA between consecutive appointments
     const withEta = appointments.map((apt, idx) => {
@@ -236,9 +257,12 @@ app.get('/api/appointments', async (req, res) => {
       return { ...apt, eta };
     });
 
-    res.json({ appointments: withEta, view, date: date.toISOString().split('T')[0] });
+    const response = { appointments: withEta, view, date: date.toISOString().split('T')[0] };
+    console.log(`Sending response with ${withEta.length} appointments`);
+    res.json(response);
   } catch (error) {
     console.error('Calendar error:', error.message);
+    console.error('Stack:', error.stack);
     res.status(500).json({ error: error.message, appointments: [] });
   }
 });
