@@ -4,6 +4,8 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import http from 'http';
+import https from 'https';
 import ICAL from 'ical.js';
 
 dotenv.config();
@@ -14,9 +16,27 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Configure HTTP agents to prevent connection leaks
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+
+axios.defaults.httpAgent = httpAgent;
+axios.defaults.httpsAgent = httpsAgent;
+
 app.use(cors());
 app.use(express.json());
+
+// Serve manifest with proper headers
+app.get('/manifest.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.sendFile(`${__dirname}/manifest.json`);
+});
+
 app.use(express.static(__dirname));
+
+// Increase event listener limit
+process.setMaxListeners(20);
 
 // Calendar ICS Feed
 const CALENDAR_ICS_URL = process.env.CALENDAR_ICS_URL;
@@ -34,7 +54,11 @@ async function fetchCalendarEvents(dateMin, dateMax) {
   }
 
   try {
-    const response = await axios.get(CALENDAR_ICS_URL);
+    const response = await axios.get(CALENDAR_ICS_URL, {
+      timeout: 10000,
+      httpAgent,
+      httpsAgent
+    });
     const jcal = ICAL.parse(response.data);
     const comp = new ICAL.Component(jcal);
     const events = comp.getAllSubcomponents('vevent');
@@ -408,6 +432,15 @@ app.post('/api/sync-queue', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+// Error handlers
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
 });
 
 app.listen(PORT, () => {
