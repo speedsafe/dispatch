@@ -4,7 +4,7 @@ import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { google } from 'googleapis';
+import ICAL from 'ical.js';
 
 dotenv.config();
 
@@ -18,24 +18,65 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Google Calendar Service Account
-let auth = null;
-let calendarClient = null;
+// Calendar ICS Feed
+const CALENDAR_ICS_URL = process.env.CALENDAR_ICS_URL;
 
-if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-  try {
-    const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-    auth = new google.auth.GoogleAuth({
-      credentials: serviceAccount,
-      scopes: ['https://www.googleapis.com/auth/calendar.readonly']
-    });
-    calendarClient = google.calendar({ version: 'v3', auth });
-    console.log('✅ Google Calendar Service Account configured');
-  } catch (err) {
-    console.error('❌ Failed to parse Google Service Account:', err.message);
-  }
+if (CALENDAR_ICS_URL) {
+  console.log('✅ Calendar ICS feed configured');
 } else {
-  console.warn('⚠️  Google Service Account not configured. Calendar features disabled.');
+  console.warn('⚠️  CALENDAR_ICS_URL not configured. Calendar features disabled.');
+}
+
+// Fetch and parse ICS feed
+async function fetchCalendarEvents(dateMin, dateMax) {
+  if (!CALENDAR_ICS_URL) {
+    return [];
+  }
+
+  try {
+    const response = await axios.get(CALENDAR_ICS_URL);
+    const jcal = ICAL.parse(response.data);
+    const comp = new ICAL.Component(jcal);
+    const events = comp.getAllSubcomponents('vevent');
+
+    const appointments = events
+      .map(event => {
+        const summary = event.getFirstPropertyValue('summary') || 'Event';
+        const description = event.getFirstPropertyValue('description') || '';
+        const location = event.getFirstPropertyValue('location') || '';
+        const startProp = event.getFirstPropertyValue('dtstart');
+        const endProp = event.getFirstPropertyValue('dtend');
+
+        if (!startProp || !endProp) return null;
+
+        const startTime = startProp.toJSDate();
+        const endTime = endProp.toJSDate();
+
+        // Filter by date range
+        if (startTime > dateMax || endTime < dateMin) {
+          return null;
+        }
+
+        const duration = Math.round((endTime - startTime) / 60000);
+
+        return {
+          id: event.getFirstPropertyValue('uid') || Math.random().toString(),
+          date: startTime.toISOString().split('T')[0],
+          time: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          title: summary,
+          address: location || 'TBD',
+          duration: duration > 0 ? `${duration} min` : 'All day',
+          eta: '--'
+        };
+      })
+      .filter(Boolean);
+
+    return appointments;
+  } catch (error) {
+    console.error('ICS feed error:', error.message);
+    return [];
+  }
 }
 
 // Supabase client (optional for development)
@@ -111,15 +152,15 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    calendarEmail: process.env.CALENDAR_EMAIL,
-    configured: !!calendarClient
+    calendar: 'ICS Feed',
+    configured: !!CALENDAR_ICS_URL
   });
 });
 
 app.get('/api/appointments', async (req, res) => {
   try {
-    if (!calendarClient) {
-      return res.status(503).json({ error: 'Calendar not configured', appointments: [] });
+    if (!CALENDAR_ICS_URL) {
+      return res.status(503).json({ error: 'Calendar ICS feed not configured', appointments: [] });
     }
 
     const view = req.query.view || 'day'; // day, week, month
@@ -144,56 +185,23 @@ app.get('/api/appointments', async (req, res) => {
       timeMax.setDate(date.getDate() + 1);
     }
 
-    const { data } = await calendarClient.events.list({
-      calendarId: process.env.CALENDAR_EMAIL || 'primary',
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      singleEvents: true,
-      orderBy: 'startTime',
-      fields: 'items(id,summary,description,start,end,location)'
-    });
+    const appointments = await fetchCalendarEvents(timeMin, timeMax);
 
-    const appointments = (data.items || []).map((event, idx, items) => {
-      const startTime = new Date(event.start.dateTime || event.start.date);
-      const endTime = new Date(event.end.dateTime || event.end.date);
-      const duration = Math.round((endTime - startTime) / 60000);
-
-      // Extract location from event
-      let address = event.location || 'TBD';
-      if (!event.location && event.description) {
-        const addressMatch = event.description.match(/(?:Address|Address:|at |Location:)([^\n]+)/i);
-        if (addressMatch) {
-          address = addressMatch[1].trim();
-        }
-      }
-
-      // Calculate ETA to next appointment
+    // Calculate ETA between consecutive appointments
+    const withEta = appointments.map((apt, idx) => {
       let eta = '--';
-      if (idx < items.length - 1) {
-        const nextEvent = items[idx + 1];
-        const nextStartTime = new Date(nextEvent.start.dateTime || nextEvent.start.date);
-        const timeBetween = Math.round((nextStartTime - endTime) / 60000);
+      if (idx < appointments.length - 1) {
+        const nextTime = new Date(`2000-01-01 ${appointments[idx + 1].time}`);
+        const currentEnd = new Date(`2000-01-01 ${apt.endTime}`);
+        const timeBetween = Math.round((nextTime - currentEnd) / 60000);
         if (timeBetween > 0) {
           eta = `${timeBetween} min`;
         }
       }
-
-      const leaveTime = new Date(startTime.getTime() - 15 * 60000);
-
-      return {
-        id: event.id,
-        date: startTime.toISOString().split('T')[0],
-        time: startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        endTime: endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        title: event.summary || 'Event',
-        address,
-        duration: duration > 0 ? `${duration} min` : 'All day',
-        eta,
-        leaveTime: leaveTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
+      return { ...apt, eta };
     });
 
-    res.json({ appointments, view, date: date.toISOString().split('T')[0] });
+    res.json({ appointments: withEta, view, date: date.toISOString().split('T')[0] });
   } catch (error) {
     console.error('Calendar error:', error.message);
     res.status(500).json({ error: error.message, appointments: [] });
