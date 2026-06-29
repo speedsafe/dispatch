@@ -1,0 +1,489 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  background-color: #0f0f0f;
+  color: #e0e0e0;
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* App Container */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #0f0f0f;
+}
+
+/* Login Screen */
+.login-screen {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  padding: 20px;
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+}
+
+.login-box {
+  width: 100%;
+  max-width: 400px;
+  padding: 40px;
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+.login-logo {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 30px;
+  background: #1a8dff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: bold;
+  color: white;
+}
+
+.login-box h1 {
+  font-size: 24px;
+  margin-bottom: 10px;
+  color: #fff;
+  text-align: center;
+}
+
+.login-box p {
+  font-size: 14px;
+  color: #999;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #aaa;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  background-color: #0f0f0f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #1a8dff;
+  box-shadow: 0 0 0 2px rgba(26, 141, 255, 0.1);
+}
+
+.login-button {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #1a8dff 0%, #0d5fcf 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+
+.login-button:hover {
+  box-shadow: 0 4px 16px rgba(26, 141, 255, 0.3);
+}
+
+.login-button:active {
+  transform: scale(0.98);
+}
+
+.login-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dispatch Screen */
+.dispatch-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #0f0f0f;
+}
+
+.dispatch-header {
+  padding: 16px;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dispatch-header h1 {
+  font-size: 18px;
+  color: #fff;
+}
+
+.logout-button {
+  padding: 8px 16px;
+  background-color: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+.logout-button:hover {
+  background-color: #3a3a3a;
+}
+
+/* Leaving Card */
+.leaving-card {
+  padding: 20px;
+  background: linear-gradient(135deg, #1a8dff 0%, #0d5fcf 100%);
+  margin: 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(26, 141, 255, 0.2);
+  color: white;
+  text-align: center;
+}
+
+.leaving-card-time {
+  font-size: 32px;
+  font-weight: 900;
+  margin: 10px 0;
+  letter-spacing: 1px;
+}
+
+.leaving-card-worker {
+  font-size: 16px;
+  opacity: 0.9;
+  margin-top: 8px;
+}
+
+.leaving-card-eta {
+  font-size: 14px;
+  opacity: 0.85;
+  margin-top: 12px;
+  font-weight: 500;
+}
+
+/* Appointment Carousel */
+.carousel-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.appointment-card {
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.appointment-card:hover {
+  background-color: #222;
+  border-color: #1a8dff;
+  box-shadow: 0 4px 12px rgba(26, 141, 255, 0.1);
+}
+
+.appointment-card.active {
+  border-color: #1a8dff;
+  background-color: #1a1a2e;
+  box-shadow: 0 0 20px rgba(26, 141, 255, 0.15);
+}
+
+.appointment-time {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a8dff;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.appointment-customer {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.appointment-address {
+  font-size: 14px;
+  color: #aaa;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.appointment-service {
+  font-size: 13px;
+  color: #999;
+  margin-bottom: 12px;
+  padding: 8px;
+  background-color: #0f0f0f;
+  border-radius: 4px;
+}
+
+.appointment-eta {
+  font-size: 12px;
+  color: #10b981;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.appointment-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-navigate {
+  flex: 1;
+  padding: 10px;
+  background-color: #1a8dff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-navigate:hover {
+  background-color: #0d5fcf;
+}
+
+.btn-call {
+  padding: 10px 14px;
+  background-color: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-call:hover {
+  background-color: #059669;
+}
+
+/* Map Container */
+.map-container {
+  width: 100%;
+  height: 400px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Team Screen */
+.team-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.team-header {
+  padding: 16px;
+  background-color: #1a1a1a;
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.team-header h1 {
+  font-size: 20px;
+  color: #fff;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.toggle-btn {
+  padding: 8px 14px;
+  background-color: #2a2a2a;
+  color: #aaa;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.toggle-btn.active {
+  background-color: #1a8dff;
+  color: white;
+  border-color: #1a8dff;
+}
+
+.team-map {
+  flex: 1;
+  overflow: hidden;
+}
+
+.team-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.worker-card {
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.worker-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.worker-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  background-color: #10b981;
+  color: white;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-badge.transit {
+  background-color: #f59e0b;
+}
+
+.worker-eta {
+  font-size: 13px;
+  color: #999;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .login-box {
+    padding: 30px 20px;
+  }
+
+  .login-box h1 {
+    font-size: 20px;
+  }
+
+  .appointment-card {
+    padding: 16px;
+  }
+
+  .appointment-time {
+    font-size: 12px;
+  }
+
+  .appointment-customer {
+    font-size: 16px;
+  }
+
+  .leaving-card-time {
+    font-size: 28px;
+  }
+
+  .dispatch-header {
+    padding: 12px;
+  }
+
+  .dispatch-header h1 {
+    font-size: 16px;
+  }
+
+  .map-container {
+    height: 300px;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f0f0f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #0f0f0f;
+    color: #e0e0e0;
+  }
+}

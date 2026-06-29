@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <meta name="description" content="SpeedSafe Dispatch - GPS tracking and scheduling for field technicians">
+  <title>SpeedSafe Dispatch</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230f0f0f' width='192' height='192'/><circle cx='96' cy='96' r='80' fill='%231a8dff'/><text x='96' y='115' font-size='60' font-weight='bold' fill='white' text-anchor='middle'>SS</text></svg>">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230f0f0f' width='192' height='192'/><circle cx='96' cy='96' r='80' fill='%231a8dff'/><text x='96' y='115' font-size='60' font-weight='bold' fill='white' text-anchor='middle'>SS</text></svg>">
+  <link rel="stylesheet" href="speedsafe-dispatch.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mapbox-gl@2.15.0/dist/mapbox-gl.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/mapbox-gl@2.15.0/dist/mapbox-gl.css" rel="stylesheet">
+  <script src="speedsafe-dispatch-app.jsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch(err => console.log('SW registration failed:', err));
+    }
+  </script>
+</body>
+</html>
