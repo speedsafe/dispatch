@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#0f0f0f">
-    <meta name="description" content="SpeedSafe Dispatch - GPS tracking and task management for installation technicians">
+    <meta name="description" content="SpeedSafe Dispatch - Calendar dashboard for daily jobs">
     <title>SpeedSafe Dispatch</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231a8dff' width='100' height='100'/><text x='50' y='50' font-size='60' font-weight='bold' fill='white' text-anchor='middle' dy='.3em'>S</text></svg>">
@@ -14,13 +14,11 @@
         html, body { height: 100%; width: 100%; overflow-x: hidden; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: #0f0f0f; color: #e5e5e5; }
         #root { height: 100%; }
-        .app-container { height: 100vh; display: flex; flex-direction: column; background: #0f0f0f; }
-        .loading { display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 18px; color: #1a8dff; }
     </style>
 </head>
 <body>
     <div id="root"></div>
-    
+
     <!-- React & ReactDOM from CDN -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -29,274 +27,194 @@
 
     <!-- Main App Script -->
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect } = React;
 
-        // LoginScreen Component
-        function LoginScreen({ onLogin }) {
-            const [email, setEmail] = useState('worker@speedsafe.au');
-            const [password, setPassword] = useState('password');
-            const [error, setError] = useState('');
-            const [loading, setLoading] = useState(false);
-
-            const handleGoogleLogin = async () => {
-                setError('');
-                setLoading(true);
-                try {
-                    const response = await fetch('/auth/google');
-                    const data = await response.json();
-                    if (data.authUrl) {
-                        window.location.href = data.authUrl;
-                    } else {
-                        setError('Failed to get Google auth URL. Check server configuration.');
-                    }
-                } catch (err) {
-                    setError('Error: ' + err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const handleSubmit = async (e) => {
-                e.preventDefault();
-                setError('');
-                setLoading(true);
-                try {
-                    const response = await fetch('/api/auth/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email, password })
-                    });
-                    const data = await response.json();
-                    if (data.user) {
-                        onLogin(data.user);
-                    } else {
-                        setError(data.message || 'Login failed');
-                    }
-                } catch (err) {
-                    setError('Connection error: ' + err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            return (
-                <div className="login-screen">
-                    <div className="login-box">
-                        <div className="login-logo">S</div>
-                        <h1>SpeedSafe Dispatch</h1>
-                        <p>Your Daily Job Schedule</p>
-
-                        <button
-                            type="button"
-                            onClick={handleGoogleLogin}
-                            disabled={loading}
-                            style={{
-                                width: '100%',
-                                padding: '12px',
-                                background: '#fff',
-                                color: '#333',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontWeight: '600',
-                                cursor: 'pointer',
-                                marginBottom: '16px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '8px'
-                            }}
-                        >
-                            📅 {loading ? 'Connecting...' : 'Connect Google Calendar'}
-                        </button>
-
-                        <div style={{textAlign: 'center', marginBottom: '12px', fontSize: '12px', color: '#666'}}>or</div>
-
-                        <form onSubmit={handleSubmit}>
-                            <div className="form-group">
-                                <label>Email</label>
-                                <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-                            </div>
-                            <div className="form-group">
-                                <label>Password</label>
-                                <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                            </div>
-                            <button type="submit" className="login-button" disabled={loading}>{loading ? 'Logging in...' : 'Demo Login'}</button>
-                            {error && <div style={{color: '#ff6b6b', marginTop: '16px', textAlign: 'center'}}>{error}</div>}
-                            <div style={{fontSize: '11px', color: '#666', marginTop: '16px', textAlign: 'center'}}>Demo: worker@speedsafe.au / password</div>
-                        </form>
-                    </div>
-                </div>
-            );
-        }
-
-        // WorkerDispatchScreen Component
-        function WorkerDispatchScreen({ user, onLogout }) {
+        function Dashboard() {
             const [appointments, setAppointments] = useState([]);
-            const [location, setLocation] = useState(null);
+            const [view, setView] = useState('day');
+            const [currentDate, setCurrentDate] = useState(new Date());
             const [loading, setLoading] = useState(true);
-            const mapRef = useRef(null);
+            const [error, setError] = useState('');
+
+            const fetchAppointments = async (date, viewType) => {
+                setLoading(true);
+                setError('');
+                try {
+                    const dateStr = date.toISOString().split('T')[0];
+                    const response = await fetch(`/api/appointments?view=${viewType}&date=${dateStr}`);
+                    const data = await response.json();
+                    if (data.appointments) {
+                        setAppointments(data.appointments);
+                    } else if (data.error) {
+                        setError(data.error);
+                    }
+                } catch (err) {
+                    setError('Failed to load appointments: ' + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
 
             useEffect(() => {
-                // Fetch appointments
-                fetch(`/api/appointments?worker_id=${user.id}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        setAppointments(data.appointments || []);
-                        setLoading(false);
-                    })
-                    .catch(err => {
-                        console.error('Fetch error:', err);
-                        setLoading(false);
-                    });
+                fetchAppointments(currentDate, view);
+            }, [view, currentDate]);
 
-                // Request location
-                if (navigator.geolocation) {
-                    navigator.geolocation.watchPosition(
-                        (pos) => {
-                            const newLoc = {
-                                lat: pos.coords.latitude,
-                                lng: pos.coords.longitude,
-                                accuracy: pos.coords.accuracy
-                            };
-                            setLocation(newLoc);
-                            // Send to backend
-                            fetch('/api/location', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ worker_id: user.id, ...newLoc })
-                            }).catch(err => console.error('Location update error:', err));
-                        },
-                        (err) => console.error('Geolocation error:', err),
-                        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-                    );
+            const handlePrevious = () => {
+                const newDate = new Date(currentDate);
+                if (view === 'day') {
+                    newDate.setDate(newDate.getDate() - 1);
+                } else if (view === 'week') {
+                    newDate.setDate(newDate.getDate() - 7);
+                } else if (view === 'month') {
+                    newDate.setMonth(newDate.getMonth() - 1);
                 }
+                setCurrentDate(newDate);
+            };
 
-                // Register Service Worker
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker.register('/service-worker.js')
-                        .then(reg => console.log('SW registered:', reg.scope))
-                        .catch(err => console.error('SW registration failed:', err));
+            const handleNext = () => {
+                const newDate = new Date(currentDate);
+                if (view === 'day') {
+                    newDate.setDate(newDate.getDate() + 1);
+                } else if (view === 'week') {
+                    newDate.setDate(newDate.getDate() + 7);
+                } else if (view === 'month') {
+                    newDate.setMonth(newDate.getMonth() + 1);
                 }
+                setCurrentDate(newDate);
+            };
 
-                // Request notification permission
-                if ('Notification' in window && Notification.permission === 'default') {
-                    Notification.requestPermission();
+            const handleToday = () => {
+                setCurrentDate(new Date());
+            };
+
+            const getDateRange = () => {
+                const date = new Date(currentDate);
+                if (view === 'day') {
+                    return date.toLocaleDateString('en-AU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                } else if (view === 'week') {
+                    const weekStart = new Date(date);
+                    weekStart.setDate(date.getDate() - date.getDay());
+                    const weekEnd = new Date(weekStart);
+                    weekEnd.setDate(weekStart.getDate() + 6);
+                    return `${weekStart.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-AU', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                } else if (view === 'month') {
+                    return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
                 }
-            }, [user.id]);
+            };
+
+            const groupByDate = (appointments) => {
+                const grouped = {};
+                appointments.forEach(apt => {
+                    const date = apt.date;
+                    if (!grouped[date]) {
+                        grouped[date] = [];
+                    }
+                    grouped[date].push(apt);
+                });
+                return Object.entries(grouped).sort((a, b) => new Date(a[0]) - new Date(b[0]));
+            };
 
             return (
-                <div className="dispatch-screen">
-                    <div className="dispatch-header">
-                        <h1>Dispatch - {user.name}</h1>
-                        <button onClick={onLogout} className="logout-button">Logout</button>
+                <div className="dashboard">
+                    <div className="dashboard-header">
+                        <div className="header-left">
+                            <div className="logo-text">📅</div>
+                            <div>
+                                <h1>Dispatch Calendar</h1>
+                                <p>speedsafe.dash@gmail.com</p>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="carousel-container">
-                        <h3 style={{paddingLeft: '16px', marginTop: '12px', marginBottom: '12px'}}>Today's Appointments</h3>
-                        {loading ? (
-                            <div style={{padding: '20px', textAlign: 'center', color: '#999'}}>Loading appointments...</div>
-                        ) : appointments.length === 0 ? (
-                            <div style={{padding: '20px', textAlign: 'center', color: '#999'}}>No appointments scheduled</div>
-                        ) : (
-                            <>
-                                {appointments.map((apt, idx) => (
+                    <div className="view-controls">
+                        <div className="view-buttons">
+                            <button
+                                className={`view-btn ${view === 'day' ? 'active' : ''}`}
+                                onClick={() => setView('day')}
+                            >
+                                📅 Day
+                            </button>
+                            <button
+                                className={`view-btn ${view === 'week' ? 'active' : ''}`}
+                                onClick={() => setView('week')}
+                            >
+                                📊 Week
+                            </button>
+                            <button
+                                className={`view-btn ${view === 'month' ? 'active' : ''}`}
+                                onClick={() => setView('month')}
+                            >
+                                📈 Month
+                            </button>
+                        </div>
+
+                        <div className="date-controls">
+                            <button onClick={handlePrevious} className="nav-btn">←</button>
+                            <span className="date-display">{getDateRange()}</span>
+                            <button onClick={handleNext} className="nav-btn">→</button>
+                            <button onClick={handleToday} className="today-btn">Today</button>
+                        </div>
+                    </div>
+
+                    <div className="appointments-container">
+                        {loading && <div className="loading">Loading appointments...</div>}
+                        {error && <div className="error-message">⚠️ {error}</div>}
+
+                        {!loading && appointments.length === 0 && (
+                            <div className="no-appointments">No jobs scheduled for this period</div>
+                        )}
+
+                        {!loading && appointments.length > 0 && view === 'day' && (
+                            <div className="appointments-list">
+                                {appointments.map(apt => (
                                     <div key={apt.id} className="appointment-card">
-                                        <div className="appointment-time">{apt.time}</div>
-                                        <div className="appointment-customer">{apt.customer}</div>
-                                        <div className="appointment-address">📍 {apt.address}</div>
-                                        <div className="appointment-service">{apt.service}</div>
-                                        <div className="appointment-eta">ETA: {apt.eta}</div>
-                                        <div style={{fontSize: '14px', fontWeight: '600', color: '#1a8dff', marginBottom: '12px'}}>Price: {apt.price}</div>
-                                        <div className="appointment-actions">
-                                            <button className="btn-navigate">Navigate</button>
-                                            <button className="btn-call">Call</button>
+                                        <div className="apt-time-block">
+                                            <div className="apt-time">{apt.time}</div>
+                                            <div className="apt-duration">{apt.duration}</div>
+                                        </div>
+                                        <div className="apt-content">
+                                            <div className="apt-title">{apt.title}</div>
+                                            <div className="apt-address">📍 {apt.address}</div>
+                                            {apt.eta !== '--' && (
+                                                <div className="apt-eta">Next job in {apt.eta}</div>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
-                            </>
+                            </div>
                         )}
 
-                        <h3 style={{paddingLeft: '16px', marginTop: '24px', marginBottom: '12px'}}>Current Location</h3>
-                        <div className="appointment-card">
-                            {location ? (
-                                <div>
-                                    <div style={{fontSize: '13px', marginBottom: '8px'}}>Latitude: <strong>{location.lat.toFixed(6)}</strong></div>
-                                    <div style={{fontSize: '13px', marginBottom: '8px'}}>Longitude: <strong>{location.lng.toFixed(6)}</strong></div>
-                                    <div style={{fontSize: '13px'}}>Accuracy: <strong>±{Math.round(location.accuracy)}m</strong></div>
-                                </div>
-                            ) : (
-                                <div style={{color: '#999'}}>Requesting location...</div>
-                            )}
-                        </div>
+                        {!loading && appointments.length > 0 && (view === 'week' || view === 'month') && (
+                            <div className="appointments-grouped">
+                                {groupByDate(appointments).map(([date, dayAppointments]) => {
+                                    const dateObj = new Date(date + 'T00:00:00');
+                                    return (
+                                    <div key={date} className="day-section">
+                                        <div className="day-header">
+                                            {dateObj.toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                        </div>
+                                        <div className="day-appointments">
+                                            {dayAppointments.map(apt => (
+                                                <div key={apt.id} className="apt-compact">
+                                                    <span className="time">{apt.time}</span>
+                                                    <span className="title">{apt.title}</span>
+                                                    <span className="duration">{apt.duration}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
         }
 
-        // Main App Component
-        function App() {
-            const [user, setUser] = useState(null);
-            const [loading, setLoading] = useState(true);
-
-            const handleLogin = (userData) => {
-                setUser(userData);
-                localStorage.setItem('user', JSON.stringify(userData));
-            };
-
-            const handleLogout = () => {
-                setUser(null);
-                localStorage.removeItem('user');
-                window.location.href = '/';
-            };
-
-            useEffect(() => {
-                const checkAuth = async () => {
-                    // Check for Google Calendar auth
-                    try {
-                        const response = await fetch('/auth/status');
-                        const data = await response.json();
-                        if (data.authenticated) {
-                            setUser({
-                                id: 'google-user',
-                                name: 'Your Calendar',
-                                role: 'user',
-                                source: 'google'
-                            });
-                        }
-                    } catch (e) {
-                        console.log('No Google auth active');
-                    }
-
-                    // Check for stored demo user
-                    const stored = localStorage.getItem('user');
-                    if (stored) {
-                        try {
-                            setUser(JSON.parse(stored));
-                        } catch (e) {
-                            console.error('Failed to restore user:', e);
-                        }
-                    }
-
-                    setLoading(false);
-                };
-
-                checkAuth();
-            }, []);
-
-            if (loading) {
-                return <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0f0f0f', color: '#1a8dff', fontSize: '18px'}}>Loading...</div>;
-            }
-
-            return user ? (
-                <WorkerDispatchScreen user={user} onLogout={handleLogout} />
-            ) : (
-                <LoginScreen onLogin={handleLogin} />
-            );
-        }
-
-        // Render App
+        // Render the dashboard
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(<Dashboard />);
     </script>
 </body>
 </html>
