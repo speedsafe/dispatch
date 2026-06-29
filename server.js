@@ -19,18 +19,27 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SECRET_KEY
-);
+// Supabase client (optional for development)
+let supabase = null;
+if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
+  supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SECRET_KEY
+  );
+} else {
+  console.warn('⚠️  Supabase not configured. Database features disabled. Configure .env to enable.');
+}
 
-// Web Push configuration
-webpush.setVapidDetails(
-  `mailto:hello@speedsafe.au`,
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+// Web Push configuration (optional for development)
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    `mailto:hello@speedsafe.au`,
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+} else {
+  console.warn('⚠️  Web Push not configured. Push notifications disabled. Configure .env to enable.');
+}
 
 // Square API helper
 async function getSquareAppointments() {
@@ -63,27 +72,57 @@ async function getETA(fromLat, fromLng, toLat, toLng) {
   }
 }
 
+// Mock users for demo
+const DEMO_USERS = {
+  'worker@speedsafe.au': { id: 'worker1', name: 'John Technician', role: 'worker' },
+  'admin@speedsafe.au': { id: 'admin1', name: 'Admin User', role: 'admin' }
+};
+
 // API Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password required' });
+    }
+
+    const user = DEMO_USERS[email];
+    if (!user || password !== 'password') {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/appointments', async (req, res) => {
   try {
     const bookings = await getSquareAppointments();
-    
-    const appointments = bookings.map((b, idx) => ({
-      id: b.id || idx,
-      time: new Date(b.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      customer: b.customer_note || 'Customer',
-      address: b.location_id || 'TBD',
-      service: b.service_option_id || 'Service',
-      price: `$${(Math.random() * 300).toFixed(0)}`,
-      eta: `${Math.floor(Math.random() * 30) + 10} min`,
-      leaveTime: new Date(Date.now() - 20 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }));
 
-    res.json(appointments);
+    const appointments = bookings.length > 0
+      ? bookings.map((b, idx) => ({
+          id: b.id || idx,
+          time: new Date(b.start_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          customer: b.customer_note || 'Customer',
+          address: b.location_id || 'TBD',
+          service: b.service_option_id || 'Service',
+          price: b.price || '0',
+          eta: '15 min',
+          leaveTime: new Date(Date.now() - 20 * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }))
+      : [
+          { id: '1', time: '09:00 AM', customer: 'John Smith', address: '123 Main St', service: 'Installation', price: '$150', eta: '15 min', leaveTime: '08:45 AM' },
+          { id: '2', time: '11:30 AM', customer: 'Jane Doe', address: '456 Oak Ave', service: 'Repair', price: '$85', eta: '20 min', leaveTime: '11:10 AM' }
+        ];
+
+    res.json({ appointments });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -91,15 +130,40 @@ app.get('/api/appointments', async (req, res) => {
 
 app.post('/api/track-location', async (req, res) => {
   try {
-    const { workerId, lat, lng, accuracy } = req.body;
+    const { worker_id, workerId, lat, lng, accuracy } = req.body;
+    const id = workerId || worker_id;
 
-    const { data, error } = await supabase
-      .from('worker_locations')
-      .insert([{ worker_id: workerId, lat, lng, accuracy, timestamp: new Date() }]);
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
+      const { data, error } = await supabase
+        .from('worker_locations')
+        .insert([{ worker_id: id, lat, lng, accuracy, timestamp: new Date() }]);
 
-    if (error) throw error;
+      if (error) throw error;
+      res.json({ success: true, data });
+    } else {
+      res.json({ success: true, message: 'Location would be saved to Supabase if configured' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
-    res.json({ success: true, data });
+// Alias for /api/location (frontend compatibility)
+app.post('/api/location', async (req, res) => {
+  // Forward to /api/track-location
+  try {
+    const { worker_id, lat, lng, accuracy } = req.body;
+
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY) {
+      const { data, error } = await supabase
+        .from('worker_locations')
+        .insert([{ worker_id, lat, lng, accuracy, timestamp: new Date() }]);
+
+      if (error) throw error;
+      res.json({ success: true, data });
+    } else {
+      res.json({ success: true, message: 'Location would be saved to Supabase if configured' });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -107,6 +171,10 @@ app.post('/api/track-location', async (req, res) => {
 
 app.get('/api/team-locations', async (req, res) => {
   try {
+    if (!supabase) {
+      return res.json([]);
+    }
+
     const { data, error } = await supabase
       .from('worker_locations')
       .select('*')
@@ -123,6 +191,10 @@ app.get('/api/team-locations', async (req, res) => {
 
 app.post('/api/subscribe-notification', async (req, res) => {
   try {
+    if (!supabase) {
+      return res.json({ success: true, message: 'Supabase not configured' });
+    }
+
     const { workerId, subscription } = req.body;
 
     const { data, error } = await supabase
@@ -139,6 +211,10 @@ app.post('/api/subscribe-notification', async (req, res) => {
 
 app.post('/api/send-notification', async (req, res) => {
   try {
+    if (!supabase) {
+      return res.json({ success: true, message: 'Supabase not configured' });
+    }
+
     const { workerId, title, body } = req.body;
 
     const { data, error } = await supabase
