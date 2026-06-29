@@ -1,17 +1,6 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".",
-  "framework": "other",
-  "env": {
-    "SQUARE_ACCESS_TOKEN": "@square_access_token",
-    "SQUARE_LOCATION_ID": "@square_location_id",
-    "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
-    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "@next_public_supabase_publishable_key",
-    "SUPABASE_SECRET_KEY": "@supabase_secret_key",
-    "MAPBOX_TOKEN": "@mapbox_token",
-    "VAPID_PUBLIC_KEY": "@vapid_public_key",
-    "VAPID_PRIVATE_KEY": "@vapid_private_key"
-  },
   "routes": [
     {
       "src": "/api/(.*)",
